@@ -7,3 +7,4 @@ Description: Make mDNSResponder care more about /etc/hosts
 Maintainer: PoomSmart
 Author: PoomSmart
 Section: Tweaks
+Depiction: https://poomsmart.github.io/repo/letmeblock/index.html
