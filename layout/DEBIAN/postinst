@@ -1,0 +1,24 @@
+#!/bin/sh
+
+model=$(uname -i)
+model=${model/AP/}
+
+jetsam_plist="/System/Library/LaunchDaemons/com.apple.jetsamproperties.${model}.plist"
+
+if [[ ! -f "${jetsam_plist}" ]];then
+    echo "Error: Couldn't find the jetsam properties plist (${jetsam_plist})"
+    exit 1
+fi
+
+cp "${jetsam_plist}" "${jetsam_plist/.plist/.plist.bak}"
+echo "Created the backup file (${jetsam_plist/.plist/.plist.bak})"
+
+# The new upper memory limit for mDNSResponder
+new_limit=256
+
+plutil -key Version4 -key Daemon -key Override -key com.apple.mDNSResponder.reloaded -key ActiveSoftMemoryLimit -value ${new_limit} $jetsam_plist
+plutil -key Version4 -key Daemon -key Override -key com.apple.mDNSResponder.reloaded -key InactiveHardMemoryLimit -value ${new_limit} $jetsam_plist
+
+killall -9 mDNSResponder || true
+
+echo "A reboot or ldrestart IS REQUIRED for the memory limit change to take effects"
