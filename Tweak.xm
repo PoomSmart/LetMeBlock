@@ -44,7 +44,7 @@ hook:
 }
 
 %hookf(FILE *, fopen, const char *path, const char *mode) {
-    if (path && strcmp(path, DEFAULT_HOSTS_PATH) == 0) {
+	if (path && strcmp(path, DEFAULT_HOSTS_PATH) == 0) {
 		FILE *r = %orig(NEW_HOSTS_PATH, mode);
 		return r ? r : %orig;
 	}
