@@ -25,5 +25,5 @@ function finish() {
 }
 
 if [[ "$1" == "remove" ]]; then
-	finish restart
+	finish reboot
 fi

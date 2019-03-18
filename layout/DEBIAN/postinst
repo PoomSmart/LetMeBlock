@@ -24,5 +24,3 @@ if [ -f /var/mobile/.killmDNSResponder ];then
 else
     killall -9 mDNSResponder || true
 fi
-
-echo "A reboot or ldrestart IS REQUIRED for the memory limit change to take effects"

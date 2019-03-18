@@ -1,11 +1,13 @@
 #!/bin/bash
 
-function finish() {
-	f="${1}"
-	[[ -z "${f}" || -z "${CYDIA}" ]] && return
-	cydia=(${CYDIA})
-	[[ ${cydia[1]} -eq 1 ]] || return
-	echo "finish:${f}" >&${cydia[0]}
-}
-
-finish reboot
+if [[ $1 == install ]];then
+	echo "A reboot or ldrestart IS REQUIRED for the memory limit change to take effects"
+	function finish() {
+		f="${1}"
+		[[ -z "${f}" || -z "${CYDIA}" ]] && return
+		cydia=(${CYDIA})
+		[[ ${cydia[1]} -eq 1 ]] || return
+		echo "finish:${f}" >&${cydia[0]}
+	}
+    finish reboot
+fi
