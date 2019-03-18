@@ -20,22 +20,22 @@ unsigned int *_mDNS_StatusCallback_allocated = NULL;
 // The new UHB will place all the blocked addresses to NEW_HOSTS_PATH so we won't mess up with the original file
 // If in any cases NEW_HOSTS_PATH got corrupted, we fallback to the original one (DEFAULT_HOSTS_PATH)
 %hookf(int, open, const char *path, int oflag, ...) {
-    int result = 0;
+	int result = 0;
 	bool orig = false;
 hook:
 	if (!orig && path && strcmp(path, DEFAULT_HOSTS_PATH) == 0)
 		path = NEW_HOSTS_PATH;
-    if (oflag & O_CREAT) {
-        mode_t mode;
-        va_list args;
-        va_start(args, oflag);
-        mode = (mode_t)va_arg(args, int);
-        va_end(args);
-        result = %orig(path, oflag, mode);
-    }
-    else
-        result = %orig(path, oflag);
-    if (!orig && result == -1) {
+	if (oflag & O_CREAT) {
+		mode_t mode;
+		va_list args;
+		va_start(args, oflag);
+		mode = (mode_t)va_arg(args, int);
+		va_end(args);
+		result = %orig(path, oflag, mode);
+	}
+	else
+		result = %orig(path, oflag);
+	if (!orig && result == -1) {
 		orig = true;
 		path = DEFAULT_HOSTS_PATH;
 		goto hook;
