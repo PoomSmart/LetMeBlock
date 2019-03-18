@@ -15,3 +15,15 @@ mv "${jetsam_orig_plist}" "${jetsam_plist}"
 echo "Restored the backup file"
 
 killall -9 mDNSResponder || true
+
+function finish() {
+	f="${1}"
+	[[ -z "${f}" || -z "${CYDIA}" ]] && return
+	cydia=(${CYDIA})
+	[[ ${cydia[1]} -eq 1 ]] || return
+	echo "finish:${f}" >&${cydia[0]}
+}
+
+if [[ "$1" == "remove" ]]; then
+	finish restart
+fi

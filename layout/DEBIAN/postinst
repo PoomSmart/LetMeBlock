@@ -19,6 +19,10 @@ new_limit=256
 plutil -key Version4 -key Daemon -key Override -key com.apple.mDNSResponder.reloaded -key ActiveSoftMemoryLimit -value ${new_limit} $jetsam_plist
 plutil -key Version4 -key Daemon -key Override -key com.apple.mDNSResponder.reloaded -key InactiveHardMemoryLimit -value ${new_limit} $jetsam_plist
 
-killall -9 mDNSResponder || true
+if [ -f /var/mobile/.killmDNSResponder ];then
+    rm /var/mobile/.killmDNSResponder &>/dev/null
+else
+    killall -9 mDNSResponder || true
+fi
 
 echo "A reboot or ldrestart IS REQUIRED for the memory limit change to take effects"
