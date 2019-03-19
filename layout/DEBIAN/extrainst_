@@ -10,4 +10,6 @@ if [[ $1 == install ]];then
 		echo "finish:${f}" >&${cydia[0]}
 	}
     finish reboot
+elif [[ $1 == upgrade ]];then
+	killall -9 mDNSResponder || true
 fi
