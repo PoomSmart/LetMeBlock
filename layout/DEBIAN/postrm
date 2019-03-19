@@ -3,7 +3,7 @@
 model=$(uname -i)
 model=${model/AP/}
 
-jetsam_orig_plist="/System/Library/LaunchDaemons/com.apple.jetsamproperties.${model}.plist"
+jetsam_orig_plist="/System/Library/LaunchDaemons/com.apple.jetsamproperties.${model}.plist.bak"
 jetsam_plist="/System/Library/LaunchDaemons/com.apple.jetsamproperties.${model}.plist"
 
 if [[ ! -f "${jetsam_orig_plist}" ]];then
