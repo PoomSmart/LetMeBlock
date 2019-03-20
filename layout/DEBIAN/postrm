@@ -1,17 +1,6 @@
 #!/bin/sh
 
-function finish() {
-	f="${1}"
-	[[ -z "${f}" || -z "${CYDIA}" ]] && return
-	cydia=(${CYDIA})
-	[[ ${cydia[1]} -eq 1 ]] || return
-	echo "finish:${f}" >&${cydia[0]}
-}
-
 if [[ "$1" == "remove" || "$1" == "abort-install" ]];then
-	if [[ "$1" == "remove" ]]; then
-		finish reboot
-	fi
 	killall -9 mDNSResponder || true
 	killall -9 mDNSResponderHelper || true
 fi
