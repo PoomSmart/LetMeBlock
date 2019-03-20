@@ -12,4 +12,5 @@ if [[ $1 == install ]];then
     finish reboot
 elif [[ $1 == upgrade ]];then
 	killall -9 mDNSResponder || true
+	killall -9 mDNSResponderHelper || true
 fi

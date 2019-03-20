@@ -1,1 +1,1 @@
-{ Filter = { Executables = ( "mDNSResponder" ); }; }
+{ Filter = { Executables = ( "mDNSResponder", "mDNSResponderHelper" ); }; }

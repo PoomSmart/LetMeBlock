@@ -1,19 +1,5 @@
 #!/bin/sh
 
-model=$(uname -i)
-model=${model/AP/}
-
-jetsam_orig_plist="/System/Library/LaunchDaemons/com.apple.jetsamproperties.${model}.plist.bak"
-jetsam_plist="/System/Library/LaunchDaemons/com.apple.jetsamproperties.${model}.plist"
-
-if [[ ! -f "${jetsam_orig_plist}" ]];then
-    echo "Error: Couldn't find the original jetsam properties plist (${jetsam_orig_plist})"
-    exit 1
-fi
-
-mv "${jetsam_orig_plist}" "${jetsam_plist}"
-echo "Restored the backup file"
-
 function finish() {
 	f="${1}"
 	[[ -z "${f}" || -z "${CYDIA}" ]] && return
@@ -27,4 +13,5 @@ if [[ "$1" == "remove" || "$1" == "abort-install" ]];then
 		finish reboot
 	fi
 	killall -9 mDNSResponder || true
+	killall -9 mDNSResponderHelper || true
 fi
