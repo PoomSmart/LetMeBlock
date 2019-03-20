@@ -16,8 +16,8 @@ echo "Created the backup file (${jetsam_plist/.plist/.plist.bak})"
 # The new upper memory limit for mDNSResponder
 new_limit=384
 
-plutil -key Version4 -key Daemon -key Override -key com.apple.mDNSResponder.reloaded -key ActiveSoftMemoryLimit -value ${new_limit} $jetsam_plist
-plutil -key Version4 -key Daemon -key Override -key com.apple.mDNSResponder.reloaded -key InactiveHardMemoryLimit -value ${new_limit} $jetsam_plist
+plutil -key Version4 -key Daemon -key Override -key com.apple.mDNSResponder.reloaded -key ActiveSoftMemoryLimit -integer ${new_limit} $jetsam_plist
+plutil -key Version4 -key Daemon -key Override -key com.apple.mDNSResponder.reloaded -key InactiveHardMemoryLimit -integer ${new_limit} $jetsam_plist
 
 plutil -key Version4 -key System -key Override -key Global -key UserReclaimableLimit -remove $jetsam_plist
 plutil -key Version4 -key System -key Override -key Global -key UserHighWaterMark -remove $jetsam_plist

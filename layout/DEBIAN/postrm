@@ -14,8 +14,6 @@ fi
 mv "${jetsam_orig_plist}" "${jetsam_plist}"
 echo "Restored the backup file"
 
-killall -9 mDNSResponder || true
-
 function finish() {
 	f="${1}"
 	[[ -z "${f}" || -z "${CYDIA}" ]] && return
@@ -24,6 +22,9 @@ function finish() {
 	echo "finish:${f}" >&${cydia[0]}
 }
 
-if [[ "$1" == "remove" ]]; then
-	finish reboot
+if [[ "$1" == "remove" || "$1" == "abort-install" ]];then
+	if [[ "$1" == "remove" ]]; then
+		finish reboot
+	fi
+	killall -9 mDNSResponder || true
 fi
