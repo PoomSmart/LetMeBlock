@@ -1,5 +1,7 @@
 #import <substrate.h>
+#import <xpc/xpc.h>
 
+#include <spawn.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <sys/sysctl.h>
@@ -7,6 +9,8 @@
 
 #define DEFAULT_HOSTS_PATH "/etc/hosts"
 #define NEW_HOSTS_PATH "/etc/hosts.lmb"
+
+%group mDNSResponder
 
 unsigned int *_mDNS_StatusCallback_allocated = NULL;
 
@@ -59,14 +63,34 @@ hook:
 	return %orig;
 }
 
+%end
+
+%group mDNSResponderHelper
+
+%hookf(void, "___accept_client_block_invoke", int arg0, xpc_object_t object) {
+	%orig;
+	if (xpc_get_type(object) != XPC_TYPE_DICTIONARY) {
+		// If this happens, mDNSResponderHelper assumes that mDNSResponder died - and yes, we want the helper to die too
+		pid_t pid;
+		const char *args[] = {
+			"launchctl", "stop", "com.apple.mDNSResponderHelper", NULL
+		};
+		posix_spawn(&pid, "/bin/launchctl", NULL, NULL, (char *const *)args, NULL);
+		waitpid(pid, NULL, WEXITED);
+	}
+}
+
+%end
+
 %ctor {
 	_mDNS_StatusCallback_allocated = (unsigned int *)MSFindSymbol(NULL, "_mDNS_StatusCallback.allocated");
-	HBLogDebug(@"Found _mDNS_StatusCallback_allocated: %d", _mDNS_StatusCallback_allocated != NULL);
 	if (_mDNS_StatusCallback_allocated) {
 		// mDNSResponder (_mDNSResponder)
-		%init;
+		HBLogDebug(@"LetMeBlock: run on mDNSResponder");
+		%init(mDNSResponder);
 	} else {
 		// mDNSResponderHelper (root)
+		HBLogDebug(@"LetMeBlock: run on mDNSResponderHelper");
 		pid_t pid = 0;
 		int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0};
         size_t size;
@@ -92,5 +116,6 @@ hook:
 					HBLogError(@"LetMeBlock-jetsamctl: error: %s", strerror(errno));
 			}
 		}
+		%init(mDNSResponderHelper);
 	}
 }
