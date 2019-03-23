@@ -1,8 +1,7 @@
 #import <substrate.h>
 #import <xpc/xpc.h>
 
-#include <spawn.h>
-#include <stdlib.h>
+ß#include <stdlib.h>
 #include <errno.h>
 #include <sys/sysctl.h>
 #include <sys/kern_memorystatus.h>
@@ -71,12 +70,7 @@ hook:
 	%orig;
 	if (xpc_get_type(object) != XPC_TYPE_DICTIONARY) {
 		// If this happens, mDNSResponderHelper assumes that mDNSResponder died - and yes, we want the helper to die too
-		pid_t pid;
-		const char *args[] = {
-			"launchctl", "stop", "com.apple.mDNSResponderHelper", NULL
-		};
-		posix_spawn(&pid, "/bin/launchctl", NULL, NULL, (char *const *)args, NULL);
-		waitpid(pid, NULL, WEXITED);
+		kill(getpid(), SIGKILL);
 	}
 }
 
@@ -93,10 +87,10 @@ hook:
 		HBLogDebug(@"LetMeBlock: run on mDNSResponderHelper");
 		pid_t pid = 0;
 		int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0};
-        size_t size;
-        if (sysctl(mib, 4, NULL, &size, NULL, 0) == -1)
-            HBLogError(@"LetMeBlock-jetsamctl: error: %s", strerror(errno));
-        else {
+		size_t size;
+		if (sysctl(mib, 4, NULL, &size, NULL, 0) == -1)
+			HBLogError(@"LetMeBlock-jetsamctl: error: %s", strerror(errno));
+		else {
 			struct kinfo_proc *processes = (struct kinfo_proc *)malloc(size);
 			if (processes == NULL)
 				HBLogError(@"LetMeBlock-jetsamctl: error: %s", strerror(errno));
