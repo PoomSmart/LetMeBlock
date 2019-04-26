@@ -110,12 +110,13 @@ hook:
 						break;
 					}
 				}
-				free(processes);
 				if (pid == 0)
 					HBLogError(@"LetMeBlock-jetsamctl: error: %s", strerror(ESRCH));
 				else if (memorystatus_control(MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT, pid, 384, NULL, 0) == -1)
 					HBLogError(@"LetMeBlock-jetsamctl: error: %s", strerror(errno));
 			}
+			if (processes)
+				free(processes);
 		}
 		%init(mDNSResponderHelper);
 	}
