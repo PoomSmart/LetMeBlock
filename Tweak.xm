@@ -1,3 +1,4 @@
+#import "../PS.h"
 #import <substrate.h>
 #import <xpc/xpc.h>
 
@@ -84,7 +85,7 @@ hook:
 %end
 
 %ctor {
-	_mDNS_StatusCallback_allocated = (unsigned int *)MSFindSymbol(NULL, "_mDNS_StatusCallback.allocated");
+	_mDNS_StatusCallback_allocated = (unsigned int *)PSFindSymbolReadable(NULL, "_mDNS_StatusCallback.allocated");
 	if (_mDNS_StatusCallback_allocated) {
 		// mDNSResponder (_mDNSResponder)
 		HBLogDebug(@"LetMeBlock: run on mDNSResponder");

@@ -1,4 +1,4 @@
-PACKAGE_VERSION = 0.0.6.4
+PACKAGE_VERSION = 0.0.6.5
 
 TARGET = iphone:latest:9.0
 ARCHS = armv7 arm64 arm64e
