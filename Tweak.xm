@@ -92,14 +92,14 @@ void proxy_mDNSExit(int arg0) {
 %end
 
 %ctor {
-	mDNS_StatusCallback_allocated = (unsigned int *)PSFindSymbolCompat(NULL, "_mDNS_StatusCallback.allocated");
+	mDNS_StatusCallback_allocated = (unsigned int *)PSFindSymbolReadableCompat(NULL, "_mDNS_StatusCallback.allocated");
 	if (mDNS_StatusCallback_allocated) {
 		// mDNSResponder (_mDNSResponder)
 		HBLogDebug(@"LetMeBlock: run on mDNSResponder");
-		_PSHookFunction(NULL, "_mDNS_StatusCallback", mDNS_StatusCallback);
-		_PSHookFunction(MSGetImageByName("/usr/lib/system/libsystem_darwin.dylib"), "_os_variant_has_internal_diagnostics", os_variant_has_internal_diagnostics);
-		_PSHookFunction(MSGetImageByName("/usr/lib/system/libsystem_c.dylib"), "_fopen", fopen);
-		_PSHookFunction(MSGetImageByName("/usr/lib/system/libsystem_kernel.dylib"), "_open", open);
+		_PSHookFunctionCompat(NULL, "_mDNS_StatusCallback", mDNS_StatusCallback);
+		_PSHookFunctionCompat("/usr/lib/system/libsystem_darwin.dylib", "_os_variant_has_internal_diagnostics", os_variant_has_internal_diagnostics);
+		_PSHookFunctionCompat("/usr/lib/system/libsystem_c.dylib", "_fopen", fopen);
+		_PSHookFunctionCompat("/usr/lib/system/libsystem_kernel.dylib", "_open", open);
 		%init(mDNSResponder);
 	} else {
 		// mDNSResponderHelper (root)
@@ -130,8 +130,8 @@ void proxy_mDNSExit(int arg0) {
 			if (processes)
 				free(processes);
 		}
-		_PSHookFunction(NULL, "_proxy_mDNSExit", proxy_mDNSExit);
-		_PSHookFunction(NULL, "___accept_client_block_invoke", __accept_client_block_invoke);
+		_PSHookFunctionCompat(NULL, "_proxy_mDNSExit", proxy_mDNSExit);
+		_PSHookFunctionCompat(NULL, "___accept_client_block_invoke", __accept_client_block_invoke);
 		%init(mDNSResponderHelper);
 	}
 }
