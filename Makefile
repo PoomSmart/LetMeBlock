@@ -1,4 +1,4 @@
-PACKAGE_VERSION = 0.0.6.6
+PACKAGE_VERSION = 0.0.6.6-1
 
 TARGET = iphone:clang:latest:9.0
 
@@ -9,5 +9,3 @@ LetMeBlock_FILES = Tweak.xm
 LetMeBlock_LIBRARIES = Substitrate
 
 include $(THEOS_MAKE_PATH)/tweak.mk
-
-
