@@ -1,5 +1,6 @@
 #import "../PS.h"
 #import <substrate.h>
+#import "../libsubstitrate/substitrate.h"
 #import <xpc/xpc.h>
 
 #include <stdlib.h>
@@ -12,26 +13,29 @@
 
 %group mDNSResponder
 
-unsigned int *_mDNS_StatusCallback_allocated = NULL;
+unsigned int *mDNS_StatusCallback_allocated = NULL;
 
 // Allow /etc/hosts to be read on iOS 12
-%hookf(bool, "_os_variant_has_internal_diagnostics", const char *subsystem) {
+bool (*_os_variant_has_internal_diagnostics)(const char *) = NULL;
+bool os_variant_has_internal_diagnostics(const char *subsystem) {
 	if (subsystem && strcmp(subsystem, "com.apple.mDNSResponder") == 0)
 		return 1;
-	return %orig;
+	return _os_variant_has_internal_diagnostics(subsystem);
 }
 
 // Reset the memory counter every time it is increased
-%hookf(void, "_mDNS_StatusCallback", void *arg1, int arg2) {
-	if (_mDNS_StatusCallback_allocated)
-		*_mDNS_StatusCallback_allocated = 0;
-	%orig;
+void (*_mDNS_StatusCallback)(void *, int) = NULL;
+void mDNS_StatusCallback(void *arg1, int arg2) {
+	if (mDNS_StatusCallback_allocated)
+		*mDNS_StatusCallback_allocated = 0;
+	_mDNS_StatusCallback(arg1, arg2);
 }
 
 // Open UHB's hosts instead of /etc/hosts
 // This new UHB will place all the blocked addresses to NEW_HOSTS_PATH so we won't mess up with the original file
 // If in any cases NEW_HOSTS_PATH got corrupted, we fallback to the original one (DEFAULT_HOSTS_PATH)
-%hookf(int, "_open", const char *path, int oflag, ...) {
+int (*_open)(const char *, int, ...);
+int open(const char *path, int oflag, ...) {
 	int result = 0;
 	bool orig = false;
 hook:
@@ -43,10 +47,10 @@ hook:
 		va_start(args, oflag);
 		mode = (mode_t)va_arg(args, int);
 		va_end(args);
-		result = %orig(path, oflag, mode);
+		result = _open(path, oflag, mode);
 	}
 	else
-		result = %orig(path, oflag);
+		result = _open(path, oflag);
 	if (!orig && result == -1) {
 		orig = true;
 		path = DEFAULT_HOSTS_PATH;
@@ -55,12 +59,13 @@ hook:
 	return result;
 }
 
-%hookf(FILE *, "_fopen", const char *path, const char *mode) {
+FILE *(*_fopen)(const char *, const char *);
+FILE *fopen(const char *path, const char *mode) {
 	if (path && strcmp(path, DEFAULT_HOSTS_PATH) == 0) {
-		FILE *r = %orig(NEW_HOSTS_PATH, mode);
-		return r ? r : %orig;
+		FILE *r = _fopen(NEW_HOSTS_PATH, mode);
+		if (r) return r;
 	}
-	return %orig;
+	return _fopen(path, mode);
 }
 
 %end
@@ -68,8 +73,9 @@ hook:
 %group mDNSResponderHelper
 
 // iOS 10? - 12
-%hookf(void, "___accept_client_block_invoke", int arg0, xpc_object_t object) {
-	%orig;
+void (*___accept_client_block_invoke)(int, xpc_object_t) = NULL;
+void __accept_client_block_invoke(int arg0, xpc_object_t object) {
+	___accept_client_block_invoke(arg0, object);
 	if (xpc_get_type(object) != XPC_TYPE_DICTIONARY) {
 		// If this happens, mDNSResponderHelper assumes that mDNSResponder died - and yes, we want the helper to die too
 		kill(getpid(), SIGKILL);
@@ -77,18 +83,23 @@ hook:
 }
 
 // iOS 9
-%hookf(void, "_proxy_mDNSExit", int arg0) {
-	%orig;
+void (*_proxy_mDNSExit)(int) = NULL;
+void proxy_mDNSExit(int arg0) {
+	_proxy_mDNSExit(arg0);
 	kill(getpid(), SIGKILL);
 }
 
 %end
 
 %ctor {
-	_mDNS_StatusCallback_allocated = (unsigned int *)PSFindSymbolReadable(NULL, "_mDNS_StatusCallback.allocated");
-	if (_mDNS_StatusCallback_allocated) {
+	mDNS_StatusCallback_allocated = (unsigned int *)PSFindSymbolCompat(NULL, "_mDNS_StatusCallback.allocated");
+	if (mDNS_StatusCallback_allocated) {
 		// mDNSResponder (_mDNSResponder)
 		HBLogDebug(@"LetMeBlock: run on mDNSResponder");
+		_PSHookFunction(NULL, "_mDNS_StatusCallback", mDNS_StatusCallback);
+		_PSHookFunction(MSGetImageByName("/usr/lib/system/libsystem_darwin.dylib"), "_os_variant_has_internal_diagnostics", os_variant_has_internal_diagnostics);
+		_PSHookFunction(MSGetImageByName("/usr/lib/system/libsystem_c.dylib"), "_fopen", fopen);
+		_PSHookFunction(MSGetImageByName("/usr/lib/system/libsystem_kernel.dylib"), "_open", open);
 		%init(mDNSResponder);
 	} else {
 		// mDNSResponderHelper (root)
@@ -119,6 +130,8 @@ hook:
 			if (processes)
 				free(processes);
 		}
+		_PSHookFunction(NULL, "_proxy_mDNSExit", proxy_mDNSExit);
+		_PSHookFunction(NULL, "___accept_client_block_invoke", __accept_client_block_invoke);
 		%init(mDNSResponderHelper);
 	}
 }
