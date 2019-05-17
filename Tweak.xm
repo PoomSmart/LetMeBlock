@@ -3,7 +3,6 @@
 #import "../libsubstitrate/substitrate.h"
 #import <xpc/xpc.h>
 
-#include <stdlib.h>
 #include <errno.h>
 #include <sys/sysctl.h>
 #include <sys/kern_memorystatus.h>
@@ -31,34 +30,9 @@ void mDNS_StatusCallback(void *arg1, int arg2) {
 	_mDNS_StatusCallback(arg1, arg2);
 }
 
-// Open UHB's hosts instead of /etc/hosts
+// Open UHB's hosts instead of DEFAULT_HOSTS_PATH
 // This new UHB will place all the blocked addresses to NEW_HOSTS_PATH so we won't mess up with the original file
 // If in any cases NEW_HOSTS_PATH got corrupted, we fallback to the original one (DEFAULT_HOSTS_PATH)
-int (*_open)(const char *, int, ...);
-int open(const char *path, int oflag, ...) {
-	int result = 0;
-	bool orig = false;
-hook:
-	if (!orig && path && strcmp(path, DEFAULT_HOSTS_PATH) == 0)
-		path = NEW_HOSTS_PATH;
-	if (oflag & O_CREAT) {
-		mode_t mode;
-		va_list args;
-		va_start(args, oflag);
-		mode = (mode_t)va_arg(args, int);
-		va_end(args);
-		result = _open(path, oflag, mode);
-	}
-	else
-		result = _open(path, oflag);
-	if (!orig && result == -1) {
-		orig = true;
-		path = DEFAULT_HOSTS_PATH;
-		goto hook;
-	}
-	return result;
-}
-
 FILE *(*_fopen)(const char *, const char *);
 FILE *fopen(const char *path, const char *mode) {
 	if (path && strcmp(path, DEFAULT_HOSTS_PATH) == 0) {
@@ -66,27 +40,6 @@ FILE *fopen(const char *path, const char *mode) {
 		if (r) return r;
 	}
 	return _fopen(path, mode);
-}
-
-%end
-
-%group mDNSResponderHelper
-
-// iOS 10? - 12
-void (*___accept_client_block_invoke)(int, xpc_object_t) = NULL;
-void __accept_client_block_invoke(int arg0, xpc_object_t object) {
-	___accept_client_block_invoke(arg0, object);
-	if (xpc_get_type(object) != XPC_TYPE_DICTIONARY) {
-		// If this happens, mDNSResponderHelper assumes that mDNSResponder died - and yes, we want the helper to die too
-		kill(getpid(), SIGKILL);
-	}
-}
-
-// iOS 9
-void (*_proxy_mDNSExit)(int) = NULL;
-void proxy_mDNSExit(int arg0) {
-	_proxy_mDNSExit(arg0);
-	kill(getpid(), SIGKILL);
 }
 
 %end
@@ -99,8 +52,11 @@ void proxy_mDNSExit(int arg0) {
 		_PSHookFunctionCompat(NULL, "_mDNS_StatusCallback", mDNS_StatusCallback);
 		_PSHookFunctionCompat("/usr/lib/system/libsystem_darwin.dylib", "_os_variant_has_internal_diagnostics", os_variant_has_internal_diagnostics);
 		_PSHookFunctionCompat("/usr/lib/system/libsystem_c.dylib", "_fopen", fopen);
-		_PSHookFunctionCompat("/usr/lib/system/libsystem_kernel.dylib", "_open", open);
 		%init(mDNSResponder);
+		// Spawn mDNSResponderHelper if not already so that it will unlock mDNSResponder's memory limit as soon as possible
+		void (*Init_Connection)(void) = (void (*)(void))PSFindSymbolCallableCompat(NULL, "_Init_Connection");
+		if (Init_Connection)
+			Init_Connection();
 	} else {
 		// mDNSResponderHelper (root)
 		HBLogDebug(@"LetMeBlock: run on mDNSResponderHelper");
@@ -116,22 +72,21 @@ void proxy_mDNSExit(int arg0) {
 			else if (sysctl(mib, 4, processes, &size, NULL, 0) == -1)
 				HBLogError(@"LetMeBlock-jetsamctl: error: %s", strerror(errno));
 			else {
-				for (unsigned long i = 0; i < size / sizeof(struct kinfo_proc); i++) {
+				for (unsigned long i = 0; i < size / sizeof(struct kinfo_proc); ++i) {
 					if (strcmp(processes[i].kp_proc.p_comm, "mDNSResponder") == 0) {
 						pid = processes[i].kp_proc.p_pid;
+						if (memorystatus_control(MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT, pid, 384, NULL, 0) == -1)
+							HBLogError(@"LetMeBlock-jetsamctl: error: %s", strerror(errno));
+						else
+							HBLogDebug(@"LetMeBlock-jetsamctl: Successfully unlocked mDNSResponder's memory limit");
 						break;
 					}
 				}
 				if (pid == 0)
 					HBLogError(@"LetMeBlock-jetsamctl: error: %s", strerror(ESRCH));
-				else if (memorystatus_control(MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT, pid, 384, NULL, 0) == -1)
-					HBLogError(@"LetMeBlock-jetsamctl: error: %s", strerror(errno));
 			}
 			if (processes)
 				free(processes);
 		}
-		_PSHookFunctionCompat(NULL, "_proxy_mDNSExit", proxy_mDNSExit);
-		_PSHookFunctionCompat(NULL, "___accept_client_block_invoke", __accept_client_block_invoke);
-		%init(mDNSResponderHelper);
 	}
 }
