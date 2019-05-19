@@ -42,6 +42,15 @@ FILE *fopen(const char *path, const char *mode) {
 	return _fopen(path, mode);
 }
 
+int (*_my_open)(const char *, int);
+int my_open(const char *path, int flags) {
+	if (path && strcmp(path, DEFAULT_HOSTS_PATH) == 0) {
+		int r = _my_open(NEW_HOSTS_PATH, flags);
+		if (r != -1) return r;
+	}
+	return _my_open(path, flags);
+}
+
 %end
 
 %ctor {
@@ -52,6 +61,7 @@ FILE *fopen(const char *path, const char *mode) {
 		_PSHookFunctionCompat(NULL, "_mDNS_StatusCallback", mDNS_StatusCallback);
 		_PSHookFunctionCompat("/usr/lib/system/libsystem_darwin.dylib", "_os_variant_has_internal_diagnostics", os_variant_has_internal_diagnostics);
 		_PSHookFunctionCompat("/usr/lib/system/libsystem_c.dylib", "_fopen", fopen);
+		_PSHookFunctionCompat("/usr/lib/system/libsystem_kernel.dylib", "_open", my_open);
 		%init(mDNSResponder);
 		// Spawn mDNSResponderHelper if not already so that it will unlock mDNSResponder's memory limit as soon as possible
 		void (*Init_Connection)(void) = (void (*)(void))PSFindSymbolCallableCompat(NULL, "_Init_Connection");
