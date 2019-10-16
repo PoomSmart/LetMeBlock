@@ -1,5 +1,7 @@
 #import "../PS.h"
 #import <substrate.h>
+#import "../libsubstitrate/substitrate.h"
+#import <xpc/xpc.h>
 
 #include <errno.h>
 #include <sys/sysctl.h>
@@ -13,52 +15,56 @@
 unsigned int *mDNS_StatusCallback_allocated = NULL;
 
 // Allow /etc/hosts to be read on iOS 12
-bool (*os_variant_has_internal_diagnostics)(const char *) = NULL;
-%hookf(bool, os_variant_has_internal_diagnostics, const char *subsystem) {
+bool (*_os_variant_has_internal_diagnostics)(const char *) = NULL;
+bool os_variant_has_internal_diagnostics(const char *subsystem) {
 	if (subsystem && strcmp(subsystem, "com.apple.mDNSResponder") == 0)
 		return 1;
-	return %orig(subsystem);
+	return _os_variant_has_internal_diagnostics(subsystem);
 }
 
 // Reset the memory counter every time it is increased
-void (*mDNS_StatusCallback)(void *, int);
-%hookf(void, mDNS_StatusCallback, void *arg1, int arg2) {
+void (*_mDNS_StatusCallback)(void *, int) = NULL;
+void mDNS_StatusCallback(void *arg1, int arg2) {
 	if (mDNS_StatusCallback_allocated)
 		*mDNS_StatusCallback_allocated = 0;
-	%orig(arg1, arg2);
+	_mDNS_StatusCallback(arg1, arg2);
 }
 
 // Open UHB's hosts instead of DEFAULT_HOSTS_PATH
 // This new UHB will place all the blocked addresses to NEW_HOSTS_PATH so we won't mess up with the original file
 // If in any cases NEW_HOSTS_PATH got corrupted, we fallback to the original one (DEFAULT_HOSTS_PATH)
-%hookf(FILE *, fopen, const char *path, const char *mode) {
+FILE *(*_fopen)(const char *, const char *);
+FILE *fopen(const char *path, const char *mode) {
 	if (path && strcmp(path, DEFAULT_HOSTS_PATH) == 0) {
-		FILE *r = %orig(NEW_HOSTS_PATH, mode);
+		FILE *r = _fopen(NEW_HOSTS_PATH, mode);
 		if (r) return r;
 	}
-	return %orig(path, mode);
+	return _fopen(path, mode);
 }
 
-%hookf(int, open, const char *path, int flags) {
+int (*_my_open)(const char *, int);
+int my_open(const char *path, int flags) {
 	if (path && strcmp(path, DEFAULT_HOSTS_PATH) == 0) {
-		int r = %orig(NEW_HOSTS_PATH, flags);
+		int r = _my_open(NEW_HOSTS_PATH, flags);
 		if (r != -1) return r;
 	}
-	return %orig(path, flags);
+	return _my_open(path, flags);
 }
 
 %end
 
 %ctor {
-	mDNS_StatusCallback_allocated = (unsigned int *)_PSFindSymbolReadable(NULL, "_mDNS_StatusCallback.allocated");
+	mDNS_StatusCallback_allocated = (unsigned int *)PSFindSymbolReadableCompat(NULL, "_mDNS_StatusCallback.allocated");
 	if (mDNS_StatusCallback_allocated) {
 		// mDNSResponder (_mDNSResponder)
 		HBLogDebug(@"LetMeBlock: run on mDNSResponder");
-		mDNS_StatusCallback = (void (*)(void *, int))_PSFindSymbolCallable(NULL, "_mDNS_StatusCallback");
-		os_variant_has_internal_diagnostics = (bool (*)(const char *))_PSFindSymbolCallable(MSGetImageByName("/usr/lib/system/libsystem_darwin.dylib"), "_os_variant_has_internal_diagnostics");
+		_PSHookFunctionCompat(NULL, "_mDNS_StatusCallback", mDNS_StatusCallback);
+		_PSHookFunctionCompat("/usr/lib/system/libsystem_darwin.dylib", "_os_variant_has_internal_diagnostics", os_variant_has_internal_diagnostics);
+		_PSHookFunctionCompat("/usr/lib/system/libsystem_c.dylib", "_fopen", fopen);
+		_PSHookFunctionCompat("/usr/lib/system/libsystem_kernel.dylib", "_open", my_open);
 		%init(mDNSResponder);
 		// Spawn mDNSResponderHelper if not already so that it will unlock mDNSResponder's memory limit as soon as possible
-		void (*Init_Connection)(void) = (void (*)(void))_PSFindSymbolCallable(NULL, "_Init_Connection");
+		void (*Init_Connection)(void) = (void (*)(void))PSFindSymbolCallableCompat(NULL, "_Init_Connection");
 		if (Init_Connection)
 			Init_Connection();
 	} else {
