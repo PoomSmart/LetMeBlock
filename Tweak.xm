@@ -1,7 +1,6 @@
 #import "../PS.h"
 #import <substrate.h>
 #import "../libsubstitrate/substitrate.h"
-#import <xpc/xpc.h>
 
 #include <errno.h>
 #include <sys/sysctl.h>
