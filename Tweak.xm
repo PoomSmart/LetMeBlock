@@ -8,9 +8,7 @@
 #define DEFAULT_HOSTS_PATH "/etc/hosts"
 #define NEW_HOSTS_PATH "/etc/hosts.lmb"
 
-%group mDNSResponder
-
-unsigned int *mDNS_StatusCallback_allocated = NULL;
+%group mDNSResponder_iOS12
 
 // Allow /etc/hosts to be read on iOS 12
 bool (*os_variant_has_internal_diagnostics)(const char *) = NULL;
@@ -19,6 +17,12 @@ bool (*os_variant_has_internal_diagnostics)(const char *) = NULL;
 		return 1;
 	return %orig(subsystem);
 }
+
+%end
+
+%group mDNSResponder
+
+unsigned int *mDNS_StatusCallback_allocated = NULL;
 
 // Reset the memory counter every time it is increased
 void (*mDNS_StatusCallback)(void *, int) = NULL;
@@ -56,7 +60,11 @@ void (*mDNS_StatusCallback)(void *, int) = NULL;
 		MSImageRef ref = MSGetImageByName("/usr/sbin/mDNSResponder");
 		mDNS_StatusCallback = (void (*)(void *, int))_PSFindSymbolCallable(ref, "_mDNS_StatusCallback");
 		mDNS_StatusCallback_allocated = (unsigned int *)_PSFindSymbolReadable(ref, "_mDNS_StatusCallback.allocated");
-		os_variant_has_internal_diagnostics = (bool (*)(const char *))_PSFindSymbolCallable(MSGetImageByName("/usr/lib/system/libsystem_darwin.dylib"), "_os_variant_has_internal_diagnostics");
+		if (isiOS12Up) {
+			MSImageRef libsys = MSGetImageByName("/usr/lib/system/libsystem_darwin.dylib");
+			os_variant_has_internal_diagnostics = (bool (*)(const char *))_PSFindSymbolCallable(libsys, "_os_variant_has_internal_diagnostics");
+			%init(mDNSResponder_iOS12);
+		}
 		%init(mDNSResponder);
 		// Spawn mDNSResponderHelper if not already so that it will unlock mDNSResponder's memory limit as soon as possible
 		void (*Init_Connection)(void) = (void (*)(void))_PSFindSymbolCallable(ref, "_Init_Connection");
