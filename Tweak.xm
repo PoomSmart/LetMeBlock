@@ -3,14 +3,16 @@
 
 #include <errno.h>
 #include <sys/sysctl.h>
-#include <sys/kern_memorystatus.h>
 
+#define MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT 6
 #define DEFAULT_HOSTS_PATH "/etc/hosts"
 #define NEW_HOSTS_PATH "/etc/hosts.lmb"
 
+extern "C" int memorystatus_control(uint32_t command, pid_t pid, uint32_t flags, void *buffer, size_t buffersize);
+
 %group mDNSResponder_iOS12
 
-// Allow /etc/hosts to be read on iOS 12
+// Allow /etc/hosts to be read on iOS 12 and above
 bool (*os_variant_has_internal_diagnostics)(const char *) = NULL;
 %hookf(bool, os_variant_has_internal_diagnostics, const char *subsystem) {
 	if (subsystem && strcmp(subsystem, "com.apple.mDNSResponder") == 0)
