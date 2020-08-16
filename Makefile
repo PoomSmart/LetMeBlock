@@ -1,4 +1,4 @@
-PACKAGE_VERSION = 0.0.7.2
+PACKAGE_VERSION = 0.0.7.3
 
 TARGET = iphone:clang:latest:9.0
 
