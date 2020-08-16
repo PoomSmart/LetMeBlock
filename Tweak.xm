@@ -79,11 +79,13 @@ void (*mDNS_StatusCallback)(void *, int) = NULL;
         if (sysctl(mib, 4, NULL, &size, NULL, 0) != -1) {
             struct kinfo_proc *processes = (struct kinfo_proc *)malloc(size);
             if (processes) {
-                for (unsigned long i = 0; i < size / sizeof(struct kinfo_proc); ++i) {
-                    if (strcmp(processes[i].kp_proc.p_comm, "mDNSResponder") == 0) {
-                        pid = processes[i].kp_proc.p_pid;
-                        memorystatus_control(MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT, pid, 384, NULL, 0);
-                        break;
+                if (sysctl(mib, 4, processes, &size, NULL, 0) != -1) {
+                    for (unsigned long i = 0; i < size / sizeof(struct kinfo_proc); ++i) {
+                        if (strcmp(processes[i].kp_proc.p_comm, "mDNSResponder") == 0) {
+                            pid = processes[i].kp_proc.p_pid;
+                            memorystatus_control(MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT, pid, 384, NULL, 0);
+                            break;
+                        }
                     }
                 }
                 free(processes);
