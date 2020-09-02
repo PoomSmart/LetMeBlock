@@ -6,5 +6,6 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = LetMeBlock
 LetMeBlock_FILES = Tweak.xm
+LetMeBlock_CFLAGS = -fobjc-arc
 
 include $(THEOS_MAKE_PATH)/tweak.mk
