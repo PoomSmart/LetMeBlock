@@ -59,9 +59,9 @@ void (*mDNS_StatusCallback)(void *, int) = NULL;
     if (getuid()) {
         // mDNSResponder (_mDNSResponder)
         MSImageRef ref = MSGetImageByName("/usr/sbin/mDNSResponder");
-        mDNS_StatusCallback = (void (*)(void *, int))_PSFindSymbolCallable(ref, "_mDNS_StatusCallback");
+        mDNS_StatusCallback = (void (*)(void *, int))MSFindSymbol(ref, "_mDNS_StatusCallback");
         mDNS_StatusCallback_allocated = (unsigned int *)_PSFindSymbolReadable(ref, "_mDNS_StatusCallback.allocated");
-        if (isiOS12Up) {
+        if (IS_IOS_OR_NEWER(iOS_12_0)) {
             MSImageRef libsys = MSGetImageByName("/usr/lib/system/libsystem_darwin.dylib");
             os_variant_has_internal_diagnostics = (bool (*)(const char *))_PSFindSymbolCallable(libsys, "_os_variant_has_internal_diagnostics");
             %init(mDNSResponder_iOS12);
