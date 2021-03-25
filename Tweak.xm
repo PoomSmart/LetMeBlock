@@ -3,6 +3,7 @@
 
 #include <errno.h>
 #include <sys/sysctl.h>
+#include <xpc/xpc.h>
 
 #define MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT 6
 #define DEFAULT_HOSTS_PATH "/etc/hosts"
@@ -55,6 +56,20 @@ void (*mDNS_StatusCallback)(void *, int) = NULL;
 
 %end
 
+%group mDNSResponderHelper
+
+int (*accept_client_block_invoke)(int, xpc_object_t);
+%hookf(int, accept_client_block_invoke, int arg0, xpc_object_t req_msg) {
+    xpc_type_t type = xpc_get_type(req_msg);
+    if (type != XPC_TYPE_DICTIONARY) {
+        // mDNSResponder died, kill the helper now to respawn mDNSResponder with the helper intact
+        exit(0);
+    }
+    return %orig(arg0, req_msg);
+}
+
+%end
+
 %ctor {
     if (getuid()) {
         // mDNSResponder (_mDNSResponder)
@@ -74,14 +89,14 @@ void (*mDNS_StatusCallback)(void *, int) = NULL;
     } else {
         // mDNSResponderHelper (root)
         pid_t pid = 0;
-        int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0};
         size_t size;
+        int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0};
         if (sysctl(mib, 4, NULL, &size, NULL, 0) != -1) {
             struct kinfo_proc *processes = (struct kinfo_proc *)malloc(size);
             if (processes) {
                 if (sysctl(mib, 4, processes, &size, NULL, 0) != -1) {
                     for (unsigned long i = 0; i < size / sizeof(struct kinfo_proc); ++i) {
-                        if (strcmp(processes[i].kp_proc.p_comm, "mDNSResponder") == 0) {
+                        if (strcmp(processes[i].kp_proc.p_comm, "mDNSResponder") == 0 && pid != processes[i].kp_proc.p_pid) {
                             pid = processes[i].kp_proc.p_pid;
                             memorystatus_control(MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT, pid, 384, NULL, 0);
                             break;
@@ -90,6 +105,11 @@ void (*mDNS_StatusCallback)(void *, int) = NULL;
                 }
                 free(processes);
             }
+        }
+        MSImageRef ref = MSGetImageByName("/usr/sbin/mDNSResponderHelper");
+        accept_client_block_invoke = (int (*)(int, xpc_object_t))MSFindSymbol(ref, "___accept_client_block_invoke");
+        if (accept_client_block_invoke != NULL) {
+            %init(mDNSResponderHelper);
         }
     }
 }
