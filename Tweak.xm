@@ -1,15 +1,14 @@
-#import "../PS.h"
-#import <substrate.h>
+#import <version.h>
 
-#include <errno.h>
 #include <sys/sysctl.h>
 #include <xpc/xpc.h>
 
 #define MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT 6
+#define JETSAM_MEMORY_LIMIT 512
 #define DEFAULT_HOSTS_PATH "/etc/hosts"
 #define NEW_HOSTS_PATH "/etc/hosts.lmb"
 
-extern "C" int memorystatus_control(uint32_t command, pid_t pid, uint32_t flags, void *buffer, size_t buffersize);
+FOUNDATION_EXTERN int memorystatus_control(uint32_t command, pid_t pid, uint32_t flags, void *buffer, size_t buffersize);
 
 %group mDNSResponder_iOS12
 
@@ -75,15 +74,15 @@ int (*accept_client_block_invoke)(int, xpc_object_t);
         // mDNSResponder (_mDNSResponder)
         MSImageRef ref = MSGetImageByName("/usr/sbin/mDNSResponder");
         mDNS_StatusCallback = (void (*)(void *, int))MSFindSymbol(ref, "_mDNS_StatusCallback");
-        mDNS_StatusCallback_allocated = (unsigned int *)_PSFindSymbolReadable(ref, "_mDNS_StatusCallback.allocated");
+        mDNS_StatusCallback_allocated = (unsigned int *)MSFindSymbol(ref, "_mDNS_StatusCallback.allocated");
         if (IS_IOS_OR_NEWER(iOS_12_0)) {
             MSImageRef libsys = MSGetImageByName("/usr/lib/system/libsystem_darwin.dylib");
-            os_variant_has_internal_diagnostics = (bool (*)(const char *))_PSFindSymbolCallable(libsys, "_os_variant_has_internal_diagnostics");
+            os_variant_has_internal_diagnostics = (bool (*)(const char *))MSFindSymbol(libsys, "_os_variant_has_internal_diagnostics");
             %init(mDNSResponder_iOS12);
         }
         %init(mDNSResponder);
         // Spawn mDNSResponderHelper if not already so that it will unlock mDNSResponder's memory limit as soon as possible
-        void (*Init_Connection)(void) = (void (*)(void))_PSFindSymbolCallable(ref, "_Init_Connection");
+        void (*Init_Connection)(void) = (void (*)(void))MSFindSymbol(ref, "_Init_Connection");
         if (Init_Connection)
             Init_Connection();
     } else {
@@ -98,7 +97,7 @@ int (*accept_client_block_invoke)(int, xpc_object_t);
                     for (unsigned long i = 0; i < size / sizeof(struct kinfo_proc); ++i) {
                         if (strcmp(processes[i].kp_proc.p_comm, "mDNSResponder") == 0 && pid != processes[i].kp_proc.p_pid) {
                             pid = processes[i].kp_proc.p_pid;
-                            memorystatus_control(MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT, pid, 384, NULL, 0);
+                            memorystatus_control(MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT, pid, JETSAM_MEMORY_LIMIT, NULL, 0);
                             break;
                         }
                     }
@@ -108,7 +107,7 @@ int (*accept_client_block_invoke)(int, xpc_object_t);
         }
         MSImageRef ref = MSGetImageByName("/usr/sbin/mDNSResponderHelper");
         accept_client_block_invoke = (int (*)(int, xpc_object_t))MSFindSymbol(ref, "___accept_client_block_invoke");
-        if (accept_client_block_invoke != NULL) {
+        if (accept_client_block_invoke) {
             %init(mDNSResponderHelper);
         }
     }

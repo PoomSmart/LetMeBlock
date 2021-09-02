@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 if [[ "$1" == "remove" || "$1" == "abort-install" ]];then
 	killall -9 mDNSResponder || true
