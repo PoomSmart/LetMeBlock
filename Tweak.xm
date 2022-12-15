@@ -7,8 +7,9 @@
 #define JETSAM_MEMORY_LIMIT 512
 #define DEFAULT_HOSTS_PATH "/etc/hosts"
 #define NEW_HOSTS_PATH "/etc/hosts.lmb"
+#define ROOTLESS_NEW_HOSTS_PATH "/var/jb/etc/hosts.lmb"
 
-FOUNDATION_EXTERN int memorystatus_control(uint32_t command, pid_t pid, uint32_t flags, void *buffer, size_t buffersize);
+extern "C" int memorystatus_control(uint32_t command, pid_t pid, uint32_t flags, void *buffer, size_t buffersize);
 
 %group mDNSResponder_iOS12
 
@@ -41,6 +42,8 @@ void (*mDNS_StatusCallback)(void *, int) = NULL;
     if (path && strcmp(path, DEFAULT_HOSTS_PATH) == 0) {
         FILE *r = %orig(NEW_HOSTS_PATH, mode);
         if (r) return r;
+        r = %orig(ROOTLESS_NEW_HOSTS_PATH, mode);
+        if (r) return r;
     }
     return %orig(path, mode);
 }
@@ -48,6 +51,8 @@ void (*mDNS_StatusCallback)(void *, int) = NULL;
 %hookf(int, open, const char *path, int flags) {
     if (path && strcmp(path, DEFAULT_HOSTS_PATH) == 0) {
         int r = %orig(NEW_HOSTS_PATH, flags);
+        if (r != -1) return r;
+        r = %orig(ROOTLESS_NEW_HOSTS_PATH, flags);
         if (r != -1) return r;
     }
     return %orig(path, flags);
