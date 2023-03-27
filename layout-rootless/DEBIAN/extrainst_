@@ -1,0 +1,6 @@
+#!/bin/bash
+
+if [[ $1 == upgrade ]];then
+	killall -9 mDNSResponder || true
+	killall -9 mDNSResponderHelper || true
+fi
