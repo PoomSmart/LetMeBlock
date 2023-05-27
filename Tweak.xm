@@ -12,6 +12,8 @@
 #define NEW_HOSTS_PATH ROOT_PATH("/etc/hosts.lmb")
 #define ROOTLESS_NEW_HOSTS_PATH "/var/jb/etc/hosts"
 
+static FILE *etcHosts;
+
 extern "C" int memorystatus_control(uint32_t command, pid_t pid, uint32_t flags, void *buffer, size_t buffersize);
 
 %group mDNSResponder_iOS12
@@ -43,22 +45,13 @@ void (*mDNS_StatusCallback)(void *, int) = NULL;
 // If in any cases NEW_HOSTS_PATH got corrupted, we fallback to the original one (DEFAULT_HOSTS_PATH)
 %hookf(FILE *, fopen, const char *path, const char *mode) {
     if (path && strcmp(path, DEFAULT_HOSTS_PATH) == 0) {
-        FILE *r = %orig(NEW_HOSTS_PATH, mode);
+        if (etcHosts) return etcHosts;
+        FILE *r = %orig(ROOTLESS_NEW_HOSTS_PATH, mode);
         if (r) return r;
-        r = %orig(ROOTLESS_NEW_HOSTS_PATH, mode);
+        r = %orig(NEW_HOSTS_PATH, mode);
         if (r) return r;
     }
     return %orig(path, mode);
-}
-
-%hookf(int, open, const char *path, int flags) {
-    if (path && strcmp(path, DEFAULT_HOSTS_PATH) == 0) {
-        int r = %orig(NEW_HOSTS_PATH, flags);
-        if (r != -1) return r;
-        r = %orig(ROOTLESS_NEW_HOSTS_PATH, flags);
-        if (r != -1) return r;
-    }
-    return %orig(path, flags);
 }
 
 %end
@@ -81,6 +74,8 @@ int (*accept_client_block_invoke)(int, xpc_object_t);
     if (getuid()) {
         // mDNSResponder (_mDNSResponder)
         libSandy_applyProfile("LetMeBlock");
+        etcHosts = fopen(ROOTLESS_NEW_HOSTS_PATH, "r");
+        if (etcHosts == NULL) etcHosts = fopen(NEW_HOSTS_PATH, "r");
         MSImageRef ref = MSGetImageByName("/usr/sbin/mDNSResponder");
         mDNS_StatusCallback = (void (*)(void *, int))_PSFindSymbolCallable(ref, "_mDNS_StatusCallback");
         mDNS_StatusCallback_allocated = (unsigned int *)_PSFindSymbolReadable(ref, "_mDNS_StatusCallback.allocated");
@@ -120,4 +115,8 @@ int (*accept_client_block_invoke)(int, xpc_object_t);
             %init(mDNSResponderHelper);
         }
     }
+}
+
+%dtor {
+    if (etcHosts) fclose(etcHosts);
 }
