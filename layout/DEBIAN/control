@@ -1,6 +1,6 @@
 Package: com.ps.letmeblock
 Name: LetMeBlock
-Depends: mobilesubstrate (>= 0.9.5000), firmware (>= 9.0)
+Depends: mobilesubstrate (>= 0.9.5000), firmware (>= 9.0), com.opa334.libsandy
 Version: 1.0.0
 Architecture: iphoneos-arm
 Description: Make mDNSResponder care more about /etc/hosts

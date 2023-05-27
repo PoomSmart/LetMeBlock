@@ -1,4 +1,7 @@
+#import <PSHeader/Misc.h>
+#import <libSandy.h>
 #import <version.h>
+#import <rootless.h>
 
 #include <sys/sysctl.h>
 #include <xpc/xpc.h>
@@ -6,8 +9,10 @@
 #define MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT 6
 #define JETSAM_MEMORY_LIMIT 512
 #define DEFAULT_HOSTS_PATH "/etc/hosts"
-#define NEW_HOSTS_PATH "/etc/hosts.lmb"
-#define ROOTLESS_NEW_HOSTS_PATH "/var/jb/etc/hosts.lmb"
+#define NEW_HOSTS_PATH ROOT_PATH("/etc/hosts.lmb")
+#define ROOTLESS_NEW_HOSTS_PATH "/var/jb/etc/hosts"
+
+static FILE *etcHosts;
 
 extern "C" int memorystatus_control(uint32_t command, pid_t pid, uint32_t flags, void *buffer, size_t buffersize);
 
@@ -40,22 +45,13 @@ void (*mDNS_StatusCallback)(void *, int) = NULL;
 // If in any cases NEW_HOSTS_PATH got corrupted, we fallback to the original one (DEFAULT_HOSTS_PATH)
 %hookf(FILE *, fopen, const char *path, const char *mode) {
     if (path && strcmp(path, DEFAULT_HOSTS_PATH) == 0) {
-        FILE *r = %orig(NEW_HOSTS_PATH, mode);
+        if (etcHosts) return etcHosts;
+        FILE *r = %orig(ROOTLESS_NEW_HOSTS_PATH, mode);
         if (r) return r;
-        r = %orig(ROOTLESS_NEW_HOSTS_PATH, mode);
+        r = %orig(NEW_HOSTS_PATH, mode);
         if (r) return r;
     }
     return %orig(path, mode);
-}
-
-%hookf(int, open, const char *path, int flags) {
-    if (path && strcmp(path, DEFAULT_HOSTS_PATH) == 0) {
-        int r = %orig(NEW_HOSTS_PATH, flags);
-        if (r != -1) return r;
-        r = %orig(ROOTLESS_NEW_HOSTS_PATH, flags);
-        if (r != -1) return r;
-    }
-    return %orig(path, flags);
 }
 
 %end
@@ -77,17 +73,20 @@ int (*accept_client_block_invoke)(int, xpc_object_t);
 %ctor {
     if (getuid()) {
         // mDNSResponder (_mDNSResponder)
+        libSandy_applyProfile("LetMeBlock");
+        etcHosts = fopen(ROOTLESS_NEW_HOSTS_PATH, "r");
+        if (etcHosts == NULL) etcHosts = fopen(NEW_HOSTS_PATH, "r");
         MSImageRef ref = MSGetImageByName("/usr/sbin/mDNSResponder");
-        mDNS_StatusCallback = (void (*)(void *, int))MSFindSymbol(ref, "_mDNS_StatusCallback");
-        mDNS_StatusCallback_allocated = (unsigned int *)MSFindSymbol(ref, "_mDNS_StatusCallback.allocated");
+        mDNS_StatusCallback = (void (*)(void *, int))_PSFindSymbolCallable(ref, "_mDNS_StatusCallback");
+        mDNS_StatusCallback_allocated = (unsigned int *)_PSFindSymbolReadable(ref, "_mDNS_StatusCallback.allocated");
         if (IS_IOS_OR_NEWER(iOS_12_0)) {
             MSImageRef libsys = MSGetImageByName("/usr/lib/system/libsystem_darwin.dylib");
-            os_variant_has_internal_diagnostics = (bool (*)(const char *))MSFindSymbol(libsys, "_os_variant_has_internal_diagnostics");
+            os_variant_has_internal_diagnostics = (bool (*)(const char *))_PSFindSymbolCallable(libsys, "_os_variant_has_internal_diagnostics");
             %init(mDNSResponder_iOS12);
         }
         %init(mDNSResponder);
         // Spawn mDNSResponderHelper if not already so that it will unlock mDNSResponder's memory limit as soon as possible
-        void (*Init_Connection)(void) = (void (*)(void))MSFindSymbol(ref, "_Init_Connection");
+        void (*Init_Connection)(void) = (void (*)(void))_PSFindSymbolCallable(ref, "_Init_Connection");
         if (Init_Connection)
             Init_Connection();
     } else {
@@ -111,9 +110,13 @@ int (*accept_client_block_invoke)(int, xpc_object_t);
             }
         }
         MSImageRef ref = MSGetImageByName("/usr/sbin/mDNSResponderHelper");
-        accept_client_block_invoke = (int (*)(int, xpc_object_t))MSFindSymbol(ref, "___accept_client_block_invoke");
+        accept_client_block_invoke = (int (*)(int, xpc_object_t))_PSFindSymbolCallable(ref, "___accept_client_block_invoke");
         if (accept_client_block_invoke) {
             %init(mDNSResponderHelper);
         }
     }
+}
+
+%dtor {
+    if (etcHosts) fclose(etcHosts);
 }
