@@ -1,4 +1,5 @@
 #import <PSHeader/Misc.h>
+#import <libSandy.h>
 #import <version.h>
 #import <rootless.h>
 
@@ -72,6 +73,7 @@ int (*accept_client_block_invoke)(int, xpc_object_t);
 %ctor {
     if (getuid()) {
         // mDNSResponder (_mDNSResponder)
+        libSandy_applyProfile("LetMeBlock");
         etcHosts = fopen(ROOTLESS_NEW_HOSTS_PATH, "r");
         if (etcHosts == NULL) etcHosts = fopen(NEW_HOSTS_PATH, "r");
         MSImageRef ref = MSGetImageByName("/usr/sbin/mDNSResponder");
