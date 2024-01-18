@@ -86,9 +86,15 @@ int (*accept_client_block_invoke)(int, xpc_object_t);
         }
         %init(mDNSResponder);
         // Spawn mDNSResponderHelper if not already so that it will unlock mDNSResponder's memory limit as soon as possible
-        void (*Init_Connection)(void) = (void (*)(void))_PSFindSymbolCallable(ref, "_Init_Connection");
-        if (Init_Connection)
-            Init_Connection();
+        void (*SendDict_ToServer)(xpc_object_t) = (void (*)(xpc_object_t))_PSFindSymbolCallable(ref, "_SendDict_ToServer");
+        if (SendDict_ToServer) {
+            xpc_object_t dict = xpc_dictionary_create(NULL, NULL, 0);
+            SendDict_ToServer(dict);
+        } else {
+            void (*Init_Connection)(void) = (void (*)(void))_PSFindSymbolCallable(ref, "_Init_Connection");
+            if (Init_Connection)
+                Init_Connection();
+        }
     } else {
         // mDNSResponderHelper (root)
         pid_t pid = 0;
