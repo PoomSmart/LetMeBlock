@@ -1,5 +1,5 @@
 TARGET = iphone:clang:latest:9.0
-PACKAGE_VERSION = 1.2.1
+PACKAGE_VERSION = 1.3.0
 ifeq ($(THEOS_PACKAGE_SCHEME),rootless)
 	ARCHS = arm64 arm64e
 endif

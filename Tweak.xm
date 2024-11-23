@@ -2,19 +2,53 @@
 #import <libSandy.h>
 #import <version.h>
 #import <rootless.h>
+#import <HBLog.h>
 
 #include <sys/sysctl.h>
 #include <xpc/xpc.h>
 
+#define MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES 2
+#define MEMORYSTATUS_CMD_SET_JETSAM_HIGH_WATER_MARK 5
 #define MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT 6
+#define MEMORYSTATUS_CMD_SET_PROCESS_IS_MANAGED 16
+#define JETSAM_PRIORITY_CRITICAL 19
 #define JETSAM_MEMORY_LIMIT 512
 #define DEFAULT_HOSTS_PATH "/etc/hosts"
 #define NEW_HOSTS_PATH ROOT_PATH("/etc/hosts.lmb")
 #define ROOTLESS_NEW_HOSTS_PATH "/var/jb/etc/hosts"
 
+typedef struct memorystatus_priority_properties {
+    int32_t  priority;
+    uint64_t user_data;
+} memorystatus_priority_properties_t;
+
 static FILE *etcHosts;
 
 extern "C" int memorystatus_control(uint32_t command, pid_t pid, uint32_t flags, void *buffer, size_t buffersize);
+
+static void bypassJetsamMemoryLimit(pid_t pid) {
+    HBLogDebug(@"LetMeBlock: bypassJetsamMemoryLimit for pid %d", pid);
+    int rc; memorystatus_priority_properties_t props = {JETSAM_PRIORITY_CRITICAL, 0};
+    rc = memorystatus_control(MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES, pid, 0, &props, sizeof(props));
+    if (rc) {
+        HBLogDebug(@"LetMeBlock: memorystatus_control MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES");
+        return;
+    }
+    rc = memorystatus_control(MEMORYSTATUS_CMD_SET_JETSAM_HIGH_WATER_MARK, pid, -1, NULL, 0);
+    if (rc) {
+        HBLogDebug(@"LetMeBlock: memorystatus_control MEMORYSTATUS_CMD_SET_JETSAM_HIGH_WATER_MARK");
+        return;
+    }
+    rc = memorystatus_control(MEMORYSTATUS_CMD_SET_PROCESS_IS_MANAGED, pid, 0, NULL, 0);
+    if (rc) {
+        HBLogDebug(@"LetMeBlock: memorystatus_control MEMORYSTATUS_CMD_SET_PROCESS_IS_MANAGED");
+        return;
+    }
+    rc = memorystatus_control(MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT, pid, JETSAM_MEMORY_LIMIT, NULL, 0);
+    if (rc) {
+        HBLogDebug(@"LetMeBlock: memorystatus_control MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT");
+    }
+}
 
 %group mDNSResponder_iOS12
 
@@ -58,14 +92,23 @@ void (*mDNS_StatusCallback)(void *, int) = NULL;
 
 %group mDNSResponderHelper
 
-int (*accept_client_block_invoke)(int, xpc_object_t);
-%hookf(int, accept_client_block_invoke, int arg0, xpc_object_t req_msg) {
+void (*accept_client_block_invoke)(int, xpc_object_t);
+%hookf(void, accept_client_block_invoke, int arg0, xpc_object_t req_msg) {
+    HBLogDebug(@"LetMeBlock: accept_client_block_invoke");
     xpc_type_t type = xpc_get_type(req_msg);
     if (type != XPC_TYPE_DICTIONARY) {
         // mDNSResponder died, kill the helper now to respawn mDNSResponder with the helper intact
         exit(0);
     }
-    return %orig(arg0, req_msg);
+    %orig(arg0, req_msg);
+}
+
+void (*init_helper_service_block_invoke)(id, xpc_object_t);
+%hookf(void, init_helper_service_block_invoke, id arg0, xpc_object_t obj) {
+    HBLogDebug(@"LetMeBlock: init_helper_service_block_invoke");
+    pid_t pid = xpc_connection_get_pid(obj);
+    bypassJetsamMemoryLimit(pid);
+    %orig;
 }
 
 %end
@@ -73,6 +116,7 @@ int (*accept_client_block_invoke)(int, xpc_object_t);
 %ctor {
     if (getuid()) {
         // mDNSResponder (_mDNSResponder)
+        HBLogDebug(@"LetMeBlock: in mDNSResponder");
         libSandy_applyProfile("LetMeBlock");
         etcHosts = fopen(ROOTLESS_NEW_HOSTS_PATH, "r");
         if (etcHosts == NULL) etcHosts = fopen(NEW_HOSTS_PATH, "r");
@@ -97,27 +141,11 @@ int (*accept_client_block_invoke)(int, xpc_object_t);
         }
     } else {
         // mDNSResponderHelper (root)
-        pid_t pid = 0;
-        size_t size;
-        int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL, 0};
-        if (sysctl(mib, 4, NULL, &size, NULL, 0) != -1) {
-            struct kinfo_proc *processes = (struct kinfo_proc *)malloc(size);
-            if (processes) {
-                if (sysctl(mib, 4, processes, &size, NULL, 0) != -1) {
-                    for (unsigned long i = 0; i < size / sizeof(struct kinfo_proc); ++i) {
-                        if (strcmp(processes[i].kp_proc.p_comm, "mDNSResponder") == 0 && pid != processes[i].kp_proc.p_pid) {
-                            pid = processes[i].kp_proc.p_pid;
-                            memorystatus_control(MEMORYSTATUS_CMD_SET_JETSAM_TASK_LIMIT, pid, JETSAM_MEMORY_LIMIT, NULL, 0);
-                            break;
-                        }
-                    }
-                }
-                free(processes);
-            }
-        }
+        HBLogDebug(@"LetMeBlock: in mDNSResponderHelper");
         MSImageRef ref = MSGetImageByName("/usr/sbin/mDNSResponderHelper");
-        accept_client_block_invoke = (int (*)(int, xpc_object_t))_PSFindSymbolCallable(ref, "___accept_client_block_invoke");
-        if (accept_client_block_invoke) {
+        accept_client_block_invoke = (void (*)(int, xpc_object_t))_PSFindSymbolCallable(ref, "___accept_client_block_invoke");
+        init_helper_service_block_invoke = (void (*)(id, xpc_object_t))_PSFindSymbolCallable(ref, "___init_helper_service_block_invoke");
+        if (accept_client_block_invoke && init_helper_service_block_invoke) {
             %init(mDNSResponderHelper);
         }
     }
