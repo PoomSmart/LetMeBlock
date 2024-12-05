@@ -106,7 +106,12 @@ void (*accept_client_block_invoke)(int, xpc_object_t);
 void (*init_helper_service_block_invoke)(id, xpc_object_t);
 %hookf(void, init_helper_service_block_invoke, id arg0, xpc_object_t obj) {
     HBLogDebug(@"LetMeBlock: init_helper_service_block_invoke");
+#define ORIG_API_UNAVAILABLE(...) API_UNAVAILABLE(__VA_ARGS__)
+#undef API_UNAVAILABLE
+#define API_UNAVAILABLE(...)
     pid_t pid = xpc_connection_get_pid(obj);
+#undef API_UNAVAILABLE
+#define API_UNAVAILABLE(...) ORIG_API_UNAVAILABLE(__VA_ARGS__)
     bypassJetsamMemoryLimit(pid);
     %orig;
 }
