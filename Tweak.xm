@@ -5,7 +5,17 @@
 #import <HBLog.h>
 
 #include <sys/sysctl.h>
-#include <xpc/xpc.h>
+
+typedef const struct _xpc_type_s *xpc_type_t;
+typedef void *xpc_object_t;
+extern "C" {
+extern const struct _xpc_type_s _xpc_type_dictionary;
+xpc_type_t xpc_get_type(xpc_object_t object);
+pid_t xpc_connection_get_pid(xpc_object_t connection);
+xpc_object_t xpc_dictionary_create(const char * const *keys, const xpc_object_t *values, size_t count);
+void xpc_release(xpc_object_t object);
+}
+#define XPC_TYPE_DICTIONARY (&_xpc_type_dictionary)
 
 #define MEMORYSTATUS_CMD_SET_PRIORITY_PROPERTIES 2
 #define MEMORYSTATUS_CMD_SET_JETSAM_HIGH_WATER_MARK 5
@@ -92,26 +102,21 @@ void (*mDNS_StatusCallback)(void *, int) = NULL;
 
 %group mDNSResponderHelper
 
-void (*accept_client_block_invoke)(int, xpc_object_t);
-%hookf(void, accept_client_block_invoke, int arg0, xpc_object_t req_msg) {
+void (*accept_client_block_invoke)(void *, xpc_object_t);
+%hookf(void, accept_client_block_invoke, void *block, xpc_object_t req_msg) {
     HBLogDebug(@"LetMeBlock: accept_client_block_invoke");
     xpc_type_t type = xpc_get_type(req_msg);
     if (type != XPC_TYPE_DICTIONARY) {
         // mDNSResponder died, kill the helper now to respawn mDNSResponder with the helper intact
         exit(0);
     }
-    %orig(arg0, req_msg);
+    %orig(block, req_msg);
 }
 
 void (*init_helper_service_block_invoke)(id, xpc_object_t);
 %hookf(void, init_helper_service_block_invoke, id arg0, xpc_object_t obj) {
     HBLogDebug(@"LetMeBlock: init_helper_service_block_invoke");
-#define ORIG_API_UNAVAILABLE(...) API_UNAVAILABLE(__VA_ARGS__)
-#undef API_UNAVAILABLE
-#define API_UNAVAILABLE(...)
     pid_t pid = xpc_connection_get_pid(obj);
-#undef API_UNAVAILABLE
-#define API_UNAVAILABLE(...) ORIG_API_UNAVAILABLE(__VA_ARGS__)
     bypassJetsamMemoryLimit(pid);
     %orig;
 }
@@ -134,21 +139,23 @@ void (*init_helper_service_block_invoke)(id, xpc_object_t);
             %init(mDNSResponder_iOS12);
         }
         %init(mDNSResponder);
-        // Spawn mDNSResponderHelper if not already so that it will unlock mDNSResponder's memory limit as soon as possible
+        // Spawn mDNSResponderHelper if not already so that it will unlock mDNSResponder's memory limit as soon as possible.
+        // SendDict_ToServer sends on helper_xpc_conn, which only Init_Connection sets. On iOS 12 that global is still NULL
+        // in this constructor, and libxpc traps (brk #1) before main can call launch_activate_socket.
+        void (*Init_Connection)(void) = (void (*)(void))_PSFindSymbolCallable(ref, "_Init_Connection");
+        if (Init_Connection)
+            Init_Connection();
         void (*SendDict_ToServer)(xpc_object_t) = (void (*)(xpc_object_t))_PSFindSymbolCallable(ref, "_SendDict_ToServer");
         if (SendDict_ToServer) {
             xpc_object_t dict = xpc_dictionary_create(NULL, NULL, 0);
             SendDict_ToServer(dict);
-        } else {
-            void (*Init_Connection)(void) = (void (*)(void))_PSFindSymbolCallable(ref, "_Init_Connection");
-            if (Init_Connection)
-                Init_Connection();
+            xpc_release(dict);
         }
     } else {
         // mDNSResponderHelper (root)
         HBLogDebug(@"LetMeBlock: in mDNSResponderHelper");
         MSImageRef ref = MSGetImageByName("/usr/sbin/mDNSResponderHelper");
-        accept_client_block_invoke = (void (*)(int, xpc_object_t))_PSFindSymbolCallable(ref, "___accept_client_block_invoke");
+        accept_client_block_invoke = (void (*)(void *, xpc_object_t))_PSFindSymbolCallable(ref, "___accept_client_block_invoke");
         init_helper_service_block_invoke = (void (*)(id, xpc_object_t))_PSFindSymbolCallable(ref, "___init_helper_service_block_invoke");
         if (accept_client_block_invoke && init_helper_service_block_invoke) {
             %init(mDNSResponderHelper);
